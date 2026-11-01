@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Bora</title>
+  <meta name="description" content="Organizador de tarefas, rotina e água feito para parar de procrastinar.">
+
+  <!-- Tela de início do iPhone -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Bora">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#fff8f5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#17131a" media="(prefers-color-scheme: dark)">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="view" class="view" aria-live="polite"></main>
+
+  <button id="fab" class="fab" data-action="new-task" aria-label="Nova tarefa">+</button>
+
+  <nav class="tabbar" aria-label="Navegação">
+    <button data-tab="hoje" class="active"><span class="ico">☀️</span><span>Hoje</span></button>
+    <button data-tab="foco"><span class="ico">⏱️</span><span>Foco</span></button>
+    <button data-tab="agua"><span class="ico">💧</span><span>Água</span></button>
+    <button data-tab="ajustes"><span class="ico">⚙️</span><span>Ajustes</span></button>
+  </nav>
+
+  <div id="sheet-root"></div>
+  <div id="toast" class="toast" role="status"></div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
