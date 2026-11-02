@@ -12,6 +12,9 @@ window.BORA_CONFIG = {
   // Exemplo: '1234567890-abcdefg.apps.googleusercontent.com'
   googleClientId: '',
 
+  // Nome do atalho do app Atalhos que cria o alarme no Relógio (veja Ajustes → Alarme do iPhone)
+  shortcutName: 'Bora Alarme',
+
   // Água
   waterGoal: 8,        // copos por dia
   glassMl: 250,        // ml por copo

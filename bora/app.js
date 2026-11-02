@@ -5,7 +5,7 @@
   // ---------- Configuração ----------
   const CFG = Object.assign({
     appName: 'Bora', googleClientId: '', waterGoal: 8, glassMl: 250,
-    wake: '08:00', sleep: '22:00', waterInterval: 120
+    wake: '08:00', sleep: '22:00', waterInterval: 120, shortcutName: 'Bora Alarme'
   }, window.BORA_CONFIG || {});
   const KEY = 'bora:v1';
   const SCOPES = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks';
@@ -38,7 +38,8 @@
   const defaults = () => ({
     settings: {
       name: '', waterGoal: CFG.waterGoal, glassMl: CFG.glassMl, wake: CFG.wake, sleep: CFG.sleep,
-      waterInterval: CFG.waterInterval, clientId: '', pushTasksToGoogle: false
+      waterInterval: CFG.waterInterval, clientId: '', pushTasksToGoogle: false,
+      useShortcut: false, shortcutName: ''
     },
     tasks: [],
     water: {},          // { 'YYYY-MM-DD': copos }
@@ -46,7 +47,7 @@
     doneDays: {},       // { 'YYYY-MM-DD': quantidade concluída }
     timer: null,
     google: { token: null, exp: 0, ever: false, events: { date: null, items: [] }, waterEventIds: [], lastSync: null },
-    ui: { dismissInstall: false, dismissWaterUntil: 0 },
+    ui: { dismissInstall: false, dismissWaterUntil: 0, dismissAlarmTip: false },
     onboarded: false
   });
 
@@ -255,11 +256,12 @@
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
-  function taskStart(t) {
+  function taskStartOn(t, day) {
     const [h, m] = t.time.split(':').map(Number);
-    const d = parseD(t.date || dkey()); d.setHours(h, m, 0, 0);
+    const d = parseD(day); d.setHours(h, m, 0, 0);
     return d;
   }
+  const taskStart = (t) => taskStartOn(t, t.date || dkey());
   function taskToEvent(t) {
     const start = taskStart(t);
     const end = new Date(start.getTime() + (Number(t.duration) || 15) * 60000);
@@ -273,6 +275,90 @@
       return { uid: `agua-${i}-${hm}`, title: '💧 Beber água', start, end: new Date(start.getTime() + 5 * 60000), rrule: 'FREQ=DAILY', alarms: [0] };
     });
     downloadIcs('lembretes-agua.ics', buildIcs(evs));
+  }
+
+  // ---------- Alarme do iPhone via app Atalhos ----------
+  // O app abre o atalho "Bora Alarme" passando "HH:MM|Bora: título".
+  // O atalho cria um alarme de verdade no app Relógio (tela cheia, toca no silencioso).
+  const shortcutName = () => (S.settings.shortcutName || CFG.shortcutName || 'Bora Alarme').trim();
+  const hmOf = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+  // Alarme do Relógio só sabe horário (sem data): funciona para as próximas 24h.
+  function alarmCheck(t) {
+    if (!t.time) return { why: 'Coloque um horário na tarefa para ter alarme' };
+    const now = Date.now();
+    let start = null;
+    if (isRepeat(t)) {
+      for (const day of [dkey(), addDays(dkey(), 1)]) {
+        if (!occursOn(t, day) || isDone(t, day)) continue;
+        const d = taskStartOn(t, day);
+        if (d.getTime() > now) { start = d; break; }
+      }
+      if (!start) return { why: 'A próxima vez dessa tarefa não é nas próximas 24h' };
+    } else {
+      if (!t.date) return { why: 'Escolha um dia para a tarefa ter alarme' };
+      start = taskStart(t);
+      if (start.getTime() <= now) return { why: 'Esse horário já passou' };
+    }
+    if (start.getTime() - now > 24 * 3600000) return { why: 'O alarme do Relógio só vale para as próximas 24h. Crie mais perto do dia, ou use o Calendário.' };
+    return { at: start };
+  }
+  function runShortcut(hm, label) {
+    const text = `${hm}|Bora: ${String(label).replace(/\|/g, '/')}`.slice(0, 140);
+    location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(shortcutName())}&input=text&text=${encodeURIComponent(text)}`;
+  }
+  function shortcutAlarm(t) {
+    const c = alarmCheck(t);
+    if (!c.at) { toast(c.why); return false; }
+    t.shortcutAlarm = c.at.getTime();
+    save();
+    runShortcut(hmOf(c.at), t.title);
+    return true;
+  }
+  function shortcutTest() {
+    const d = new Date(Date.now() + 2 * 60000);
+    runShortcut(hmOf(d), 'Teste do alarme');
+  }
+  function shortcutGuide() {
+    const name = esc(shortcutName());
+    sheet(`<h3>⏰ Alarme de verdade no iPhone</h3>
+      <p>Configure uma vez só, uns 5 minutos. Depois, ao marcar “Criar alarme” numa tarefa, o app cria um alarme no <b>Relógio</b>, que aparece em tela cheia e toca mesmo no silencioso.</p>
+
+      <div class="card guide"><b>Parte 1: atalho que cria o alarme</b>
+      <ol>
+        <li>Abra o app <b>Atalhos</b>, aba <b>Atalhos</b>, e toque em <b>+</b>.</li>
+        <li>Toque no nome lá em cima e renomeie para <b class="code">${name}</b> (exatamente assim).</li>
+        <li>Adicione a ação <b>Dividir Texto</b>. Toque em “Texto” e escolha <b>Entrada do Atalho</b>. Toque em “Novas Linhas”, escolha <b>Personalizado</b> e digite <b class="code">|</b> (a barra em pé).</li>
+        <li>Adicione <b>Obter Item da Lista</b>: <b>Primeiro Item</b> de <b>Texto Dividido</b>.</li>
+        <li>Adicione <b>Obter Datas da Entrada</b> (busque por “datas”), usando o <b>Item da Lista</b>.</li>
+        <li>Adicione outro <b>Obter Item da Lista</b>: <b>Último Item</b> de <b>Texto Dividido</b>.</li>
+        <li>Adicione <b>Criar Alarme</b> (do Relógio). Em Hora, escolha <b>Datas</b>. Toque na setinha para ver mais opções e, em Rótulo, escolha o <b>Item da Lista</b> do passo 6.</li>
+        <li>Toque em <b>OK</b>.</li>
+      </ol></div>
+
+      <div class="card guide"><b>Parte 2 (opcional): apagar os alarmes que já tocaram</b>
+      <ol>
+        <li>No Atalhos, vá na aba <b>Automação</b>, toque em <b>+</b> e escolha <b>Alarme</b>.</li>
+        <li>Escolha <b>É Interrompido</b> e <b>Qualquer</b>, marque <b>Executar Imediatamente</b> e avance. Escolha <b>Nova Automação em Branco</b>.</li>
+        <li>Adicione <b>Obter Todos os Alarmes</b>.</li>
+        <li>Adicione <b>Repetir com Cada</b> (cada item em Alarmes).</li>
+        <li>Dentro do Repetir, adicione <b>Se</b>. Toque em <b>Item Repetido</b>, escolha a propriedade <b>Rótulo</b>, depois <b>começa com</b> e digite <b class="code">Bora:</b></li>
+        <li>Dentro desse Se, adicione outro <b>Se</b>: <b>Item Repetido</b>, propriedade <b>Ativado</b> (ou “Está Ativado”), depois <b>é falso</b>.</li>
+        <li>Dentro do segundo Se, adicione <b>Apagar Alarme</b> com o <b>Item Repetido</b>.</li>
+      </ol>
+      <p class="hint">Se o seu iOS não mostrar “Apagar Alarme” ou a propriedade “Ativado”, pule esta parte. Os alarmes que já tocaram ficam desligados na lista do Relógio, e dá para apagar arrastando para o lado.</p></div>
+
+      <div class="card guide"><b>Como fica no dia a dia</b>
+      <ul>
+        <li>Ao criar um alarme, o iPhone pula rapidinho para o Atalhos. Para voltar, toque em <b>◀ Bora</b> no canto superior esquerdo.</li>
+        <li>Na primeira vez, o iPhone pergunta se pode abrir o Atalhos e criar alarmes: toque em <b>Permitir</b> ou <b>Sempre permitir</b>.</li>
+        <li>O alarme vale para as <b>próximas 24h</b>. Para tarefas de outro dia, crie o alarme na véspera ou use o Calendário.</li>
+      </ul></div>
+
+      <div class="stack" style="margin-top:14px">
+        <button class="btn primary" data-action="sc-enable-test">Já configurei: ativar e testar (alarme em 2 min)</button>
+        <button class="btn ghost" data-action="sheet-close">Fazer depois</button>
+      </div>`);
   }
 
   // ---------- Google (Agenda + Tarefas) ----------
@@ -499,6 +585,7 @@
     if (t.duration) tags.push(`<span class="tag">⏱ ${t.duration} min</span>`);
     if (t.steps?.length) tags.push(`<span class="tag">${t.steps.filter((s) => s.done).length}/${t.steps.length} passos</span>`);
     if (isRepeat(t)) tags.push('<span class="tag">🔁</span>');
+    if (!done && t.shortcutAlarm && t.shortcutAlarm > Date.now()) tags.push(`<span class="tag star">⏰ ${hmOf(new Date(t.shortcutAlarm))}</span>`);
     if (t.postponed >= 2) tags.push(`<span class="tag late">adiada ${t.postponed}x</span>`);
     if (t.gtaskId) tags.push('<span class="tag gcal">Google</span>');
     return `<div class="task ${done ? 'done' : ''}">
@@ -537,6 +624,11 @@
     if (isIOS() && !isStandalone() && !S.ui.dismissInstall) {
       h += `<div class="banner info"><div class="txt">📲 <b>Instale no iPhone:</b> toque em <b>Compartilhar</b> ⬆️ e depois em <b>Adicionar à Tela de Início</b>.</div>
         <button class="x" data-action="dismiss-install" aria-label="Fechar">×</button></div>`;
+    }
+
+    if (S.onboarded && !S.settings.useShortcut && !S.ui.dismissAlarmTip) {
+      h += `<div class="banner info"><div class="txt">⏰ <b>Novo:</b> alarmes de verdade no Relógio do iPhone, em tela cheia.</div>
+        <button class="btn primary" data-action="sc-guide">Ver</button><button class="x" data-action="dismiss-alarm-tip" aria-label="Fechar">×</button></div>`;
     }
 
     h += `<div class="row-cards" style="margin-top:4px">
@@ -727,6 +819,15 @@
         <div class="field"><label for="s-int">Lembrar a cada</label><select id="s-int" data-set="waterInterval">
           ${[60, 90, 120, 150, 180].map((m) => `<option value="${m}" ${Number(st.waterInterval) === m ? 'selected' : ''}>${fmtMins(m)}</option>`).join('')}</select></div></div>
 
+      <div class="set-group"><h4>⏰ Alarme do iPhone</h4>
+        <p class="muted" style="margin:0 0 12px">Cria um alarme de verdade no app Relógio: tela cheia, toca no silencioso, e ela precisa interagir para parar. Precisa de um atalho configurado uma vez.</p>
+        <button class="btn block" data-action="sc-guide">Como configurar (passo a passo)</button>
+        <label class="toggle" style="margin-top:12px"><span>Usar alarme do Relógio nas tarefas</span><input type="checkbox" data-set="useShortcut" ${st.useShortcut ? 'checked' : ''}></label>
+        <button class="btn block" data-action="sc-test" style="margin-top:10px">Testar: alarme daqui a 2 min</button>
+        <details style="margin-top:12px"><summary class="muted">Nome do atalho</summary>
+          <div class="field" style="margin-top:10px"><input data-set="shortcutName" value="${esc(st.shortcutName)}" placeholder="${esc(CFG.shortcutName || 'Bora Alarme')}" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <div class="hint">Tem que ser igual ao nome do atalho no app Atalhos.</div></div></details></div>
+
       <div class="set-group"><h4>Google Agenda e Tarefas</h4>
         <p class="muted" style="margin:0 0 12px">${conn ? '<span class="ok-dot"></span>Conectado' : S.google.ever ? '<span class="off-dot"></span>Sessão expirada (dura ~1h, reconectar é rápido)' : '<span class="off-dot"></span>Não conectado'}
         ${S.google.lastSync ? `<br><small class="muted">Última sincronização: ${new Date(S.google.lastSync).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</small>` : ''}</p>
@@ -743,7 +844,7 @@
         </details></div>
 
       <div class="set-group"><h4>Avisos</h4>
-        <p class="muted" style="margin:0 0 12px">Com o app aberto, ele toca e avisa quando o timer acaba. Para alarmes com o app fechado, use “Alarme” nas tarefas (vai pro Calendário/Google Agenda).</p>
+        <p class="muted" style="margin:0 0 12px">Com o app aberto, ele toca e avisa quando o timer acaba. Para alarmes com o app fechado, use “Alarme” nas tarefas (Relógio, Calendário ou Google Agenda).</p>
         <button class="btn block" data-action="notif">${'Notification' in window && Notification.permission === 'granted' ? '✓ Notificações permitidas' : 'Permitir notificações'}</button></div>
 
       <div class="set-group"><h4>Backup</h4>
@@ -791,7 +892,7 @@
           <textarea name="steps" placeholder="abrir o notebook&#10;achar o arquivo&#10;escrever a primeira frase">${esc((t.steps || []).map((s) => s.t).join('\n'))}</textarea>
           <div class="hint">Quanto menor o passo, mais fácil começar. O app mostra só o próximo.</div></div>
         <label class="toggle"><span>★ Importante (aparece primeiro)</span><input type="checkbox" name="important" ${t.important ? 'checked' : ''}></label>
-        <label class="toggle" style="margin-top:10px"><span>⏰ Criar alarme ${gConnected() ? 'no Google Agenda' : 'no Calendário'}<br><small class="muted">precisa de horário</small></span><input type="checkbox" name="alarm" ${t.gcalEventId ? 'checked' : ''}></label>
+        <label class="toggle" style="margin-top:10px"><span>⏰ Criar alarme ${S.settings.useShortcut ? 'no Relógio do iPhone' : gConnected() ? 'no Google Agenda' : 'no Calendário'}<br><small class="muted">${S.settings.useShortcut ? 'precisa de horário · próximas 24h' : 'precisa de horário'}</small></span><input type="checkbox" name="alarm" ${t.gcalEventId || (t.shortcutAlarm && t.shortcutAlarm > Date.now()) ? 'checked' : ''}></label>
         <div class="sheet-actions">
           ${editing ? '<button type="button" class="btn danger" data-action="delete" data-id="' + t.id + '">Apagar</button>' : '<button type="button" class="btn" data-action="sheet-close">Cancelar</button>'}
           <button type="submit" class="btn primary">Salvar</button></div>
@@ -823,7 +924,11 @@
     const wantAlarm = f.get('alarm') === 'on';
     if (wantAlarm) {
       if (!t.time) toast('Pra ter alarme, coloque um horário');
-      else if (gConnected()) gUpsertEvent(t);
+      else if (S.settings.useShortcut) {
+        const c = alarmCheck(t);
+        if (c.at && c.at.getTime() === t.shortcutAlarm) toast('Tarefa atualizada (o alarme já existe)');
+        else shortcutAlarm(t); // abre o app Atalhos ainda dentro do toque
+      } else if (gConnected()) gUpsertEvent(t);
       else icsForTask(t); // precisa rodar ainda dentro do toque
     } else if (t.gcalEventId && gConnected()) {
       gDeleteEvent(t.gcalEventId); t.gcalEventId = null; save();
@@ -888,14 +993,27 @@
     save(); closeSheet(); render();
     toast(v === 'skip' ? 'Pulada hoje' : 'Adiada. Ela volta, viu? 😉');
     if (t.gcalEventId && t.time && t.date && gConnected()) gUpsertEvent(t);
+    if (S.settings.useShortcut && t.shortcutAlarm && !isRepeat(t)) {
+      const c = alarmCheck(t);
+      if (c.at && c.at.getTime() !== t.shortcutAlarm) {
+        sheet(`<h3>Alarme no novo horário?</h3><p>A tarefa foi para ${esc(relDay(t.date))} às ${hmOf(c.at)}. Se o alarme antigo ainda não tocou, ele vai tocar: é só parar.</p>
+          <div class="stack"><button class="btn primary" data-action="alarm-sc" data-id="${t.id}">⏰ Criar alarme às ${hmOf(c.at)}</button>
+          <button class="btn ghost" data-action="sheet-close">Não precisa</button></div>`);
+      }
+    }
   }
 
   function alarmSheet(t) {
     if (!t.time) { toast('Coloque um horário na tarefa primeiro'); taskForm(t); return; }
-    sheet(`<h3>Alarme para “${esc(t.title)}”</h3><p>${esc(relDay(t.date || dkey()))} às ${t.time}${isRepeat(t) ? ', repetindo' : ''}. Avisa na hora e 10 min antes.</p>
+    const sc = S.settings.useShortcut;
+    const c = alarmCheck(t);
+    sheet(`<h3>Alarme para “${esc(t.title)}”</h3><p>${esc(relDay(t.date || dkey()))} às ${t.time}${isRepeat(t) ? ', repetindo' : ''}.</p>
       <div class="stack">
-        ${gConnected() ? `<button class="btn primary" data-action="alarm-g" data-id="${t.id}">${t.gcalEventId ? 'Atualizar' : 'Criar'} no Google Agenda</button>` : ''}
-        <button class="btn ${gConnected() ? '' : 'primary'}" data-action="alarm-ics" data-id="${t.id}">📅 Adicionar ao Calendário do iPhone</button>
+        ${sc ? `<button class="btn primary" data-action="alarm-sc" data-id="${t.id}" ${c.at ? '' : 'disabled'}>⏰ Alarme no Relógio do iPhone</button>
+          <p class="hint" style="margin:-4px 2px 4px">${c.at ? `Toca às ${hmOf(c.at)}${isRepeat(t) ? ' (só a próxima vez)' : ''}, em tela cheia.` : esc(c.why)}</p>`
+          : '<button class="btn" data-action="sc-guide">⏰ Alarme no Relógio do iPhone (configurar)</button>'}
+        ${gConnected() ? `<button class="btn ${sc ? '' : 'primary'}" data-action="alarm-g" data-id="${t.id}">${t.gcalEventId ? 'Atualizar' : 'Criar'} no Google Agenda</button>` : ''}
+        <button class="btn ${gConnected() || sc ? '' : 'primary'}" data-action="alarm-ics" data-id="${t.id}">📅 Calendário do iPhone (avisa na hora e 10 min antes)</button>
         <button class="btn ghost" data-action="sheet-close">Cancelar</button></div>`);
   }
 
@@ -949,6 +1067,13 @@
         break;
       case 'alarm': if (t) alarmSheet(t); break;
       case 'alarm-g': if (t) { closeSheet(); gUpsertEvent(t); } break;
+      case 'alarm-sc': if (t) { closeSheet(); shortcutAlarm(t); } break;
+      case 'sc-guide': shortcutGuide(); break;
+      case 'sc-test': shortcutTest(); break;
+      case 'sc-enable-test':
+        S.settings.useShortcut = true; S.ui.dismissAlarmTip = true; save(); closeSheet(); render(); shortcutTest();
+        break;
+      case 'dismiss-alarm-tip': S.ui.dismissAlarmTip = true; save(); render(); break;
       case 'alarm-ics': if (t) { closeSheet(); icsForTask(t); } break;
 
       case 't-pause': S.timer.pausedLeft = timerLeft(); save(); render(); break;
@@ -1015,10 +1140,11 @@
     if (!k) return;
     let v = el.type === 'checkbox' ? el.checked : el.value;
     if (['waterGoal', 'glassMl', 'waterInterval'].includes(k)) v = Math.max(1, Number(v) || S.settings[k]);
-    if (k === 'clientId') v = String(v).trim();
+    if (k === 'clientId' || k === 'shortcutName') v = String(v).trim();
+    if (k === 'useShortcut' && v) S.ui.dismissAlarmTip = true;
     S.settings[k] = v;
     save();
-    if (k !== 'name') render();
+    if (k !== 'name' && k !== 'shortcutName') render();
     toast('Salvo');
   });
 

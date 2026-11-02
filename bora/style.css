@@ -278,3 +278,10 @@ small.muted { font-size: 13px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Guia do atalho */
+.guide { font-size: 15px; }
+.guide + .guide { margin-top: 12px; }
+.guide ol, .guide ul { margin: 8px 0 0; padding-left: 20px; }
+.guide li { margin: 7px 0; }
+.code { font-family: ui-monospace, Menlo, monospace; background: var(--card-2); padding: 1px 6px; border-radius: 6px; }
