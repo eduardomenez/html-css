@@ -1163,5 +1163,18 @@
   setInterval(tickTimer, 1000);
   setInterval(() => { if (tab === 'hoje' && !$('#sheet-root').innerHTML && !document.activeElement?.matches('input,textarea,select')) render(); }, 60000);
   if (justLoggedIn || (gConnected() && (!S.google.lastSync || Date.now() - S.google.lastSync > 10 * 60000))) gSync(!justLoggedIn);
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Atualização automática: quando sai versão nova, o app recarrega sozinho.
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloading) return;
+      reloading = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+      // No iPhone o app volta do segundo plano sem recarregar: verifica atualização ao voltar.
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+    }).catch(() => {});
+  }
 })();

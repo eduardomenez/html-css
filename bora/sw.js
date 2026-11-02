@@ -1,6 +1,6 @@
 // Service worker: deixa o app abrir mesmo sem internet.
 // Ao mudar arquivos do app, aumente a versão abaixo para forçar a atualização.
-const CACHE = 'bora-v2';
+const CACHE = 'bora-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -25,11 +25,13 @@ self.addEventListener('activate', (e) => {
 });
 
 // Rede primeiro (para pegar atualizações), cache como reserva.
+// cache: 'no-cache' faz o navegador sempre confirmar com o servidor se há versão nova
+// (o GitHub Pages manda guardar por 10 min, o que atrasava as atualizações).
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   e.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-cache' })
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(req, copy));
