@@ -31,6 +31,25 @@ usa o **calendário do celular**, que é quem dispara os alarmes:
   chega pelo app Google Agenda (ou pelo Calendário do iPhone, se a conta Google estiver adicionada lá).
 - **Água:** na aba Água, "Adicionar ao Calendário" cria os lembretes diários (8h, 10h, 12h...).
 
+### Alarme de verdade no Relógio (via app Atalhos)
+
+Um site não consegue criar alarme no Relógio, mas o app **Atalhos** consegue. O Bora chama um
+atalho chamado **Bora Alarme** passando `HH:MM|Bora: título da tarefa`, e o atalho cria o alarme
+no Relógio. O resultado é um alarme real: tela cheia, toca mesmo no silencioso e é preciso parar
+ou adiar.
+
+- Configuração única no iPhone: **Ajustes → ⏰ Alarme do iPhone → Como configurar**. O passo a
+  passo aparece dentro do próprio app.
+- Depois, ative **"Usar alarme do Relógio nas tarefas"** e toque em **Testar** (cria um alarme
+  para daqui a 2 minutos).
+- Limites:
+  - O alarme do Relógio só tem horário, sem data, então o app só cria alarmes para as **próximas 24h**.
+  - A cada alarme criado, o iPhone pula rapidinho para o Atalhos. Para voltar, toque em **◀ Bora**.
+  - Tarefas que se repetem ganham alarme só para a próxima vez.
+- Parte opcional: uma automação "Quando um alarme for interrompido" apaga os alarmes `Bora:`
+  que já tocaram (iOS 17+).
+- O nome do atalho pode ser mudado em `config.js` (`shortcutName`) ou em Ajustes.
+
 ## Publicar (GitHub Pages)
 
 1. Faça o merge desta branch na `master`.

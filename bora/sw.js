@@ -1,6 +1,6 @@
 // Service worker: deixa o app abrir mesmo sem internet.
 // Ao mudar arquivos do app, aumente a versão abaixo para forçar a atualização.
-const CACHE = 'bora-v1';
+const CACHE = 'bora-v2';
 const ASSETS = [
   './',
   './index.html',
